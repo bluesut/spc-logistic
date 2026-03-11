@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบจัดการการขนส่ง — SPC Logistic</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080d14;
+    --surface: #0d1520;
+    --border: #1a2d47;
+    --border2: #0f1e30;
+    --text: #c8d8e8;
+    --muted: #3d5570;
+    --accent: #1a6fc4;
+    --busy-glow: rgba(198,40,40,0.5);
+    --free-glow: rgba(27,94,32,0.5);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Sarabun', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(26,109,196,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(26,109,196,0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none; z-index: 0;
+  }
+  .wrapper { position: relative; z-index: 1; max-width: 780px; margin: 0 auto; padding-bottom: 40px; }
+
+  /* HEADER */
+  .header {
+    background: linear-gradient(180deg, #0c1828 0%, #0d1520 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 22px 24px 0;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  }
+  .header-top { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+  .logo {
+    width: 46px; height: 46px;
+    background: linear-gradient(135deg, #1565c0, #0a2d6e);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 4px 20px rgba(21,101,192,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+    flex-shrink: 0;
+  }
+  .title-block h1 { font-size: 17px; font-weight: 800; color: #90caf9; letter-spacing: 1px; }
+  .title-block p { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--muted); letter-spacing: 3px; margin-top: 2px; }
+  .date-display { margin-left: auto; text-align: right; font-family: 'Share Tech Mono', monospace; }
+  .date-display .time { font-size: 18px; color: #64b5f6; letter-spacing: 2px; }
+  .date-display .date { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  /* SYNC BAR */
+  .sync-bar {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 14px;
+    background: rgba(0,0,0,0.35);
+    border-radius: 20px;
+    margin-bottom: 14px;
+  }
+  .sync-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #546e7a; transition: background 0.4s;
+  }
+  .sync-dot.connected { background: #66bb6a; box-shadow: 0 0 7px rgba(102,187,106,0.9); animation: pulse 2s infinite; }
+  .sync-dot.syncing   { background: #ffa726; box-shadow: 0 0 7px rgba(255,167,38,0.9); }
+  .sync-dot.error     { background: #ef5350; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.45} }
+  .sync-text { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--muted); }
+
+  /* TABS */
+  .tabs { display: flex; gap: 2px; }
+  .tab {
+    flex: 1; padding: 12px 8px 10px; border: none;
+    background: transparent; cursor: pointer;
+    border-radius: 8px 8px 0 0; color: var(--muted);
+    transition: all 0.2s; border-bottom: 2px solid transparent;
+    font-family: 'Sarabun', sans-serif;
+  }
+  .tab:hover { background: rgba(26,109,196,0.05); color: #78909c; }
+  .tab.active { background: var(--bg); border-bottom-color: var(--accent); color: #90caf9; }
+  .tab .tab-label { font-size: 14px; font-weight: 700; }
+  .tab .tab-date  { font-size: 10px; margin-top: 3px; opacity: 0.7; }
+  .tab .tab-badges { display: flex; gap: 5px; justify-content: center; margin-top: 5px; }
+  .badge-busy { font-size: 9px; color: #ef5350; background: rgba(239,83,80,0.15); padding: 1px 7px; border-radius: 10px; font-family: 'Share Tech Mono', monospace; }
+  .badge-free { font-size: 9px; color: #66bb6a; background: rgba(102,187,106,0.15); padding: 1px 7px; border-radius: 10px; font-family: 'Share Tech Mono', monospace; }
+
+  /* CONTENT */
+  .content { padding: 20px 16px; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+  .loading-overlay {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    min-height: 300px; gap: 16px; color: var(--muted);
+  }
+  .spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* SCHEDULE TABLE */
+  .schedule-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+  }
+  .grid-header {
+    display: grid; grid-template-columns: 80px repeat(4, 1fr);
+    background: #080d14; border-bottom: 1px solid var(--border);
+  }
+  .col-truck { padding: 14px 8px; font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--muted); text-align: center; letter-spacing: 2px; }
+  .col-slot  { padding: 10px 6px; font-size: 10px; color: #546e7a; text-align: center; border-left: 1px solid var(--border2); line-height: 1.5; font-weight: 600; }
+  .grid-row {
+    display: grid; grid-template-columns: 80px repeat(4, 1fr);
+    border-bottom: 1px solid var(--border2); transition: background 0.15s;
+  }
+  .grid-row:last-child { border-bottom: none; }
+  .grid-row:nth-child(odd) { background: rgba(255,255,255,0.008); }
+  .grid-row:hover { background: rgba(26,109,196,0.04); }
+  .truck-cell { padding: 12px 6px; display: flex; align-items: center; justify-content: center; }
+  .truck-tag {
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; font-weight: 700;
+    color: #82b1ff; background: rgba(21,101,192,0.18);
+    padding: 4px 8px; border-radius: 6px; letter-spacing: 0.5px; white-space: nowrap;
+  }
+  .slot-cell { padding: 9px 7px; border-left: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; }
+
+  .slot-btn {
+    width: 100%; height: 52px; border: none; border-radius: 9px; cursor: pointer;
+    font-family: 'Sarabun', sans-serif; font-weight: 700; font-size: 11px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s;
+    position: relative; overflow: hidden;
+  }
+  .slot-btn:hover  { transform: scale(1.05); }
+  .slot-btn:active { transform: scale(0.93) !important; }
+  .slot-btn.free {
+    background: linear-gradient(135deg, #0d3b17, #1b5e20);
+    color: #b9f6ca;
+    box-shadow: 0 3px 14px var(--free-glow), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .slot-btn.busy {
+    background: linear-gradient(135deg, #7f1111, #c62828);
+    color: #ffcdd2;
+    box-shadow: 0 3px 14px var(--busy-glow), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .slot-btn.offline { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+  .btn-icon { font-size: 15px; line-height: 1; }
+  .btn-text { font-size: 10px; }
+
+  /* SUMMARY */
+  .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .summary-card { border-radius: 11px; padding: 16px 18px; text-align: center; border: 1px solid; }
+  .summary-card.busy-card { background: rgba(239,83,80,0.1); border-color: rgba(239,83,80,0.22); }
+  .summary-card.free-card { background: rgba(102,187,106,0.1); border-color: rgba(102,187,106,0.22); }
+  .summary-card .num { font-family: 'Share Tech Mono', monospace; font-size: 34px; font-weight: 800; line-height: 1; }
+  .busy-card .num { color: #ef5350; }
+  .free-card .num { color: #66bb6a; }
+  .summary-card .lbl { font-size: 11px; color: #546e7a; margin-top: 4px; }
+
+  .legend {
+    margin-top: 12px; padding: 12px 18px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    display: flex; gap: 24px; justify-content: center; font-size: 11px; color: var(--muted);
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">🚛</div>
+      <div class="title-block">
+        <h1>ระบบจัดการการขนส่ง</h1>
+        <p>SPC LOGISTIC — TRANSPORT MANAGEMENT</p>
+      </div>
+      <div class="date-display">
+        <div class="time" id="clock">--:--</div>
+        <div class="date" id="headerDate"></div>
+      </div>
+    </div>
+
+    <div class="sync-bar">
+      <div class="sync-dot" id="syncDot"></div>
+      <span class="sync-text" id="syncText">กำลังเชื่อมต่อ Firebase...</span>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+  </div>
+
+  <div class="content" id="content">
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+      <div style="font-size:13px;color:#37474f">กำลังโหลดข้อมูล...</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase compat SDK (ไม่ต้อง build, ใช้ได้กับ HTML ธรรมดา) -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+<script>
+  /* ── Config ── */
+  firebase.initializeApp({
+    apiKey: "AIzaSyDOQbPdjoTXr6HIQJkM-rVQJB8rUufHgkY",
+    authDomain: "spc-logistic.firebaseapp.com",
+    databaseURL: "https://spc-logistic-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "spc-logistic",
+    storageBucket: "spc-logistic.firebasestorage.app",
+    messagingSenderId: "59350564978",
+    appId: "1:59350564978:web:409fcd6fee33a1d50502eb"
+  });
+
+  const db  = firebase.database();
+  const ref = db.ref('schedule');
+
+  const TRUCKS = ['3480','3481','3617','4046','6543','ฟูโซ่'];
+  const SLOTS  = ['08:00-10:00','11:00-12:00','13:00-15:00','15:00-17:00'];
+  const SLOT_LABELS = ['08:00–10:00','11:00–12:00','13:00–15:00','15:00–17:00'];
+
+  let activeDay   = 0;
+  let schedule    = {};
+  let isConnected = false;
+
+  /* ── Days ── */
+  function getDays() {
+    const now = new Date();
+    return [0,1,2].map(offset => {
+      const d = new Date(now);
+      d.setDate(now.getDate() + offset);
+      return {
+        label:   ['วันนี้','พรุ่งนี้','มะรืนนี้'][offset],
+        dateStr: d.toLocaleDateString('th-TH', { weekday:'short', day:'numeric', month:'short' }),
+        key:     d.toISOString().slice(0,10)
+      };
+    });
+  }
+
+  /* ── Data helpers ── */
+  function isBusy(dateKey, truck, slot) {
+    return !!(schedule[dateKey]?.[truck]?.[slot]);
+  }
+
+  function dayStats(dateKey) {
+    let busy = 0;
+    TRUCKS.forEach(t => SLOTS.forEach(s => { if (isBusy(dateKey, t, s)) busy++; }));
+    return { busy, free: TRUCKS.length * SLOTS.length - busy };
+  }
+
+  /* ── Toggle → Firebase ── */
+  function toggle(dateKey, truck, slotKey) {
+    if (!isConnected) return;
+    setSyncState('syncing');
+    const current = isBusy(dateKey, truck, slotKey);
+    db.ref(`schedule/${dateKey}/${truck}/${slotKey}`).set(!current);
+  }
+
+  /* ── Sync status ── */
+  function setSyncState(state) {
+    const dot  = document.getElementById('syncDot');
+    const text = document.getElementById('syncText');
+    dot.className = 'sync-dot ' + state;
+    const msgs = {
+      connected:    'เชื่อมต่อแล้ว — Real-time sync ทุกเครื่อง ✓',
+      syncing:      'กำลัง sync...',
+      disconnected: 'ขาดการเชื่อมต่อ — โปรดตรวจสอบอินเทอร์เน็ต',
+      error:        'เกิดข้อผิดพลาด'
+    };
+    text.textContent = msgs[state] || state;
+  }
+
+  /* ── Render ── */
+  function renderTabs(days) {
+    document.getElementById('tabs').innerHTML = days.map((d, i) => {
+      const s = dayStats(d.key);
+      return `<button class="tab ${i===activeDay?'active':''}" onclick="switchDay(${i})">
+        <div class="tab-label">${d.label}</div>
+        <div class="tab-date">${d.dateStr}</div>
+        <div class="tab-badges">
+          <span class="badge-busy">●${s.busy}</span>
+          <span class="badge-free">●${s.free}</span>
+        </div>
+      </button>`;
+    }).join('');
+  }
+
+  function renderGrid(day) {
+    const s = dayStats(day.key);
+    const hdrCols = SLOTS.map((sk, i) =>
+      `<div class="col-slot">${SLOT_LABELS[i].replace('–','<br>–<br>')}</div>`
+    ).join('');
+
+    const rows = TRUCKS.map(truck => {
+      const cells = SLOTS.map((sk, si) => {
+        const busy = isBusy(day.key, truck, sk);
+        return `<div class="slot-cell">
+          <button class="slot-btn ${busy?'busy':'free'} ${isConnected?'':'offline'}"
+            onclick="toggle('${day.key}','${truck}','${sk}')">
+            <span class="btn-icon">${busy?'🔴':'🟢'}</span>
+            <span class="btn-text">${busy?'มีงาน':'ว่าง'}</span>
+          </button>
+        </div>`;
+      }).join('');
+      return `<div class="grid-row">
+        <div class="truck-cell"><span class="truck-tag">${truck}</span></div>
+        ${cells}
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="schedule-card">
+        <div class="grid-header"><div class="col-truck">รถ</div>${hdrCols}</div>
+        ${rows}
+      </div>
+      <div class="summary">
+        <div class="summary-card busy-card"><div class="num">${s.busy}</div><div class="lbl">ช่องมีงาน</div></div>
+        <div class="summary-card free-card"><div class="num">${s.free}</div><div class="lbl">ช่องว่าง</div></div>
+      </div>
+      <div class="legend">
+        <span>🟢 ว่าง — คลิกเพื่อเปลี่ยน</span>
+        <span>🔴 มีงาน — คลิกเพื่อยกเลิก</span>
+      </div>`;
+  }
+
+  function renderAll() {
+    const days = getDays();
+    renderTabs(days);
+    document.getElementById('content').innerHTML = renderGrid(days[activeDay]);
+  }
+
+  function switchDay(i) { activeDay = i; renderAll(); }
+
+  /* ── Firebase Listeners ── */
+  // Real-time: ทุกเครื่องได้รับ update ทันทีที่มีการเปลี่ยนแปลง
+  ref.on('value', snap => {
+    schedule = snap.val() || {};
+    setSyncState('connected');
+    isConnected = true;
+    renderAll();
+  }, err => {
+    console.error(err);
+    setSyncState('error');
+  });
+
+  // ติดตามสถานะ connection
+  db.ref('.info/connected').on('value', snap => {
+    isConnected = snap.val() === true;
+    if (!isConnected) { setSyncState('disconnected'); renderAll(); }
+  });
+
+  /* ── Clock ── */
+  function tick() {
+    const now = new Date();
+    document.getElementById('clock').textContent =
+      now.toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit' });
+    document.getElementById('headerDate').textContent =
+      now.toLocaleDateString('th-TH', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  }
+  tick();
+  setInterval(tick, 1000);
+  setInterval(renderAll, 60000);
+</script>
+</body>
+</html>
